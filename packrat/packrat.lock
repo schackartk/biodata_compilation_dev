@@ -1,0 +1,56 @@
+PackratFormat: 1.4
+PackratVersion: 0.7.0
+RVersion: 4.0.3
+Repos: CRAN=https://cran.rstudio.com/
+
+Package: R6
+Source: CRAN
+Version: 2.5.1
+Hash: 54378e523d0281f8d38c379484a3b7b5
+
+Package: argparse
+Source: CRAN
+Version: 2.1.2
+Hash: 21a68de15e5179e032851074b3673d0b
+Requires: R6, findpython, jsonlite
+
+Package: findpython
+Source: CRAN
+Version: 1.0.7
+Hash: b75dd535e3b677f8488f11774a257b85
+
+Package: fs
+Source: CRAN
+Version: 1.5.0
+Hash: 918ea5c88cad73d5d5b529ca98f8ad11
+
+Package: glue
+Source: CRAN
+Version: 1.4.2
+Hash: afa798ba9deec3676e20300b79094749
+
+Package: jsonlite
+Source: CRAN
+Version: 1.7.2
+Hash: a5965fb563ba3643e75c425a82f935e6
+
+Package: magrittr
+Source: CRAN
+Version: 2.0.1
+Hash: d3c166b0573ae8c918edf7221dfe7380
+
+Package: packrat
+Source: CRAN
+Version: 0.7.0
+Hash: 3d49688287bd2246cd8a58e233be39d5
+
+Package: stringi
+Source: CRAN
+Version: 1.7.5
+Hash: d49f2da012242d09be61287cc032b9c9
+
+Package: stringr
+Source: CRAN
+Version: 1.4.0
+Hash: 67da32dbb2a7a16f2ef124336358e54a
+Requires: glue, magrittr, stringi
