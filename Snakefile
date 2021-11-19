@@ -13,7 +13,7 @@ rule query_eurpopmc:
     shell:
         """
         source activate ./env
-        Rscript -e "source('packrat/init.R')"
+        Rscript -e "packrat::init()"
 
         {params.run} -o {params.out_dir}/raw {params.query:q}
         """
