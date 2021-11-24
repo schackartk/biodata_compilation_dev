@@ -75,7 +75,7 @@ main <- function() {
   out_path <- file.path(out_dir, out_file)
   
   if (!dir.exists(out_dir)) {
-    dir.create(out_dir)
+    dir.create(out_dir, recursive = TRUE)
   }
   
   write.csv(pmc_seed, out_path, row.names = FALSE)
