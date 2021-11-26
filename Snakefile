@@ -1,11 +1,11 @@
 rule all:
     input:
-        config["out_dir"] + "/raw/pmc_seed_all_2021_11_23.csv",
+        config["out_dir"] + "/raw/pmc_seed_all.csv",
 
 
 rule query_eurpopmc:
     output:
-        config["out_dir"] + "/raw/pmc_seed_all_2021_11_23.csv",
+        config["out_dir"] + "/raw/pmc_seed_all.csv",
     params:
         query=config["europepmc_query"],
         run=config["step_1_1_script"],

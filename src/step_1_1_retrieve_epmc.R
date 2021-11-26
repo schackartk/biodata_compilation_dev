@@ -69,9 +69,8 @@ main <- function() {
   pmc_seed <- epmc_search(query = query, limit = args$limit) %>% 
     filter(!is.na(id)) %>% 
     filter(pubYear > args$year)
-  
-  today <- str_replace_all(Sys.Date(), "-", "_")
-  out_file <- paste0("pmc_seed_all_", today, ".csv")
+
+  out_file <- "pmc_seed_all.csv"
   out_path <- file.path(out_dir, out_file)
   
   if (!dir.exists(out_dir)) {
