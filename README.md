@@ -2,6 +2,25 @@
 
 Repository for the project of Dr. Heidi Imker, collecting information about the current biodata databases.
 
+## Getting Set Up
+
+This project utilizes anaconda and renv to manage dependencies.
+
+Set up the conda environment:
+
+```
+conda create --prefix ./env
+conda activate ./env
+conda install -c bioconda snakemake snakefmt
+```
+
+Install R package dependencies:
+
+```
+Rscript -e "install.packages('renv')"
+Rscript -e "renv::restore()"
+```
+
 ## Project structure
 
 Here is a topographical map of the structure of this repository.
