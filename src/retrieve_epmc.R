@@ -70,7 +70,7 @@ main <- function() {
   query <- args$query
   out_dir <- args$outdir
 
-  pmc_seed <- epmc_search(query = query, limit = args$limit) %>%
+  pmc_seed <- epmc_search(query = query, limit = args$limit, verbose = FALSE) %>%
     filter(!is.na(id)) %>%
     filter(pubYear > args$year)
 
