@@ -3,7 +3,7 @@ title: "Step 1: Retrieve and Clean Seed Set"
 output: html_notebook
 ---
 
-# Overview
+# Overview {.tabset}
 
 This portion consists of 4 steps:
 
@@ -16,9 +16,10 @@ This portion consists of 4 steps:
 library(dplyr)
 library(europepmc)
 library(stringr)
+library(tidyr)
 ```
 
-## 1 Retrieval
+## 1. Retrieval
 
 The following query string is used in retrieving the initial seed set.
 
@@ -30,7 +31,9 @@ my_query
 ```
 
 ```{r retrieve, include=FALSE}
-pmc_seed <- epmc_search(query = my_query, limit = 25000)
+pmc_seed <- epmc_search(query = my_query, limit = 25000, verbose = FALSE)
+
+rm(my_query)
 ```
 
 The seed set is filtered to exclude an `NA` rows and publications before 2010.
@@ -48,15 +51,166 @@ count(pmc_seed, journalTitle)
 ```
 
 ```{r write_seed, echo=FALSE}
-today <- str_replace_all(Sys.Date(), "-", "_")
-out_file <- paste0("pmc_seed_all_", today, ".csv")
+out_file <- "pmc_seed_all.csv"
 
 out_path <- file.path("..", "data", "raw", out_file)
+
+rm(out_file)
 
 write.csv(pmc_seed_filtered, out_path, row.names = FALSE)
 
 print(str_glue("Initial seed saved to {out_path}."))
 ```
 
+## 2. Retrieve abstracts
+
+First, read in the seed set and manually checked file.
+```{r read_seed, echo=FALSE}
+pmc_seed <- read.csv("../data/raw/pmc_seed_all_2021-08-06.csv")
+
+manual_checks <- read.csv("../data/processed/manual_checks_hji_2021-08-20.csv")
+```
+
+Take a smaller subset of the papers for development purposes. *Original comments say 5k records, but code has 4,346?*
+```{r dev_subset}
+dev_subset <- pmc_seed %>% 
+  slice(10001: 14346) %>% 
+  select(id, title) %>% 
+  mutate(abstract = NA)
+```
+
+Get the abstracts of the selected papers. Generally, I don't use for loops in R since R is optimized for vector operations. However, the details object returned is quite large. So by only storing 1 in memory at a time, the memory load is greatly reduced. The trade-off is computation time is increased.
+```{r get_abstracts, message=FALSE}
+for (id in dev_subset$id) {
+  details <- epmc_details(id)
+  
+  if (!is.null(details)) {
+    abstract <- details$basic$abstractText
+    dev_subset$abstract[dev_subset$id == id] <- abstract
+  }
+}
+
+rm(details, abstract, id)
+```
+
+For which papers in this small subset were we not able to retrieve abstracts?
+
+```{r}
+no_abstract <- dev_subset %>% 
+  filter(is.na(abstract)) %>% 
+  right_join(pmc_seed %>% select(id, source), ., by="id")
+
+print(str_glue("Papers with missing abstract: {count(no_abstract)}"))
+no_abstract %>% count(source)
+```
+
+The following is a breakdown of records which:
+
+* Are in the full seed set
+* Abstract was not retrieved
+* May be in the manually checked list
+
+This is much larger than the above number because many of them are records in the manually checked list and the seed set, but were not in the small subset.
+
+```{r seed_no_abstract}
+lost <- pmc_seed %>% 
+  select(id, source) %>% 
+  filter(id %in% unique(c(no_abstract$id, manual_checks$id)))
+
+lost %>% count(source)
+```
+
+My results differ from Heidi's in that there are none with *NA* source. Those were records in the manually checked list, that were not in the seed set. They can be found below.
+
+```{r manually_checked_not_in_seed}
+manual_checks %>% select(id) %>% 
+  filter(!id %in% pmc_seed$id) %>% 
+  nrow()
+```
+
+At this point, if I understand correctly, we are trying to at least retrieve the abstract for every record in the manually checked list. In this case, it would be best to not just take a small subset, but instead try to retrieve abstracts for all of the manual ones directly.
+
+## 3. URL Cleaning
+
+### Initial Capture
+
+The following regular expression is used to describe a URL
+
+```{r url_regex, echo = FALSE}
+url_pattern <- "http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
+
+url_pattern
+```
+
+Extracting the raw matches, and unnesting for cases in which multiple URL's were found in an abstract.
+```{r extract_urls}
+dev_urls <- dev_subset
+
+dev_urls$url_match <- dev_urls$abstract %>% 
+  str_extract_all(url_pattern)
+
+dev_urls <- dev_urls %>% 
+  unnest(cols = url_match) %>% 
+  filter(!is.na(url_match))
+
+dev_urls %>% select(url_match)
+```
+
+### Cleaning Up
+
+Trimming html headers from the end of strings.
+
+Literally removing "<" followed by 0 or more of any character to end of string.
+
+```{r remove_html_tag}
+dev_urls$clean_url <- dev_urls$url_match %>%
+  str_replace("<.*$", "")
+
+dev_urls %>% select(clean_url)
+```
+
+Trimming 1 or more of anything in the character class `[.)-;:?*&>]` and also literal "]".
+
+*I added the `+` so that not just the last character in that class is trimmed*
+
+*I also added the square bracket to the character class*
+
+```{r remove_ends}
+dev_urls$clean_url <- dev_urls$clean_url %>%
+  str_replace("[.)-;:?*&>\\]]+$", "")
+
+dev_urls %>% select(clean_url)
+```
+
+Removing 1 or more whitespace characters
+
+```{r remove whitespace}
+dev_urls$clean_url <- dev_urls$clean_url %>%
+  str_replace("\\s+", "")
+
+dev_urls %>% select(clean_url)
+```
 
 
+### Remove URLs from Specific Sources
+
+Remove URL's that have certain source names in them (case insensitive).
+
+```{r remove_url_sources}
+false_sources <- c(
+  "clinicaltrials",
+  "annualreviews",
+  "onlinelibrary.wiley.com",
+  "cos.io",
+  "elsevier.com"
+)
+
+combined_sources <- paste0("(?i)", paste(false_sources, collapse = "|"))
+
+dev_urls <- dev_urls %>% 
+  filter(!str_detect(clean_url, combined_sources))
+
+rm(false_sources, combined_sources)
+
+dev_urls %>% select(clean_url)
+```
