@@ -71,66 +71,120 @@ pmc_seed <- read.csv("../data/raw/pmc_seed_all_2021-08-06.csv")
 manual_checks <- read.csv("../data/processed/manual_checks_hji_2021-08-20.csv")
 ```
 
-Take a smaller subset of the papers for development purposes. *Original comments say 5k records, but code has 4,346?*
-```{r dev_subset}
-dev_subset <- pmc_seed %>% 
-  slice(10001: 14346) %>% 
+```{r abstracts, echo = FALSE}
+abstracts <- pmc_seed %>%
   select(id, title) %>% 
   mutate(abstract = NA)
 ```
 
-Get the abstracts of the selected papers. Generally, I don't use for loops in R since R is optimized for vector operations. However, the details object returned is quite large. So by only storing 1 in memory at a time, the memory load is greatly reduced. The trade-off is computation time is increased.
+### Get Abstracts from Default Source
+
+Get the abstracts of the papers. Generally, I don't use for loops in R since R is optimized for vector operations. However, the details object returned is quite large. So by only storing 1 in memory at a time, the memory load is greatly reduced. The trade-off is computation time is increased.
+
 ```{r get_abstracts, message=FALSE}
-for (id in dev_subset$id) {
+for (id in abstracts$id) {
+  
   details <- epmc_details(id)
   
   if (!is.null(details)) {
-    abstract <- details$basic$abstractText
-    dev_subset$abstract[dev_subset$id == id] <- abstract
+    if ("basic" %in% names(details)) {
+      if ("abstractText" %in% colnames(details$basic)) {
+        abstract <- details$basic$abstractText
+        abstracts$abstract[abstracts$id == id] <- abstract
+      }
+    }
   }
 }
 
 rm(details, abstract, id)
 ```
 
-For which papers in this small subset were we not able to retrieve abstracts?
+For which papers were we not able to retrieve abstracts?
 
-```{r}
-no_abstract <- dev_subset %>% 
-  filter(is.na(abstract)) %>% 
+*Note:* Abstract retrieval so far was only done using the default source (`"med"`).
+
+```{r, echo=FALSE}
+no_abstract <- abstracts %>% 
+  filter(is.na(abstract)) %>%
   right_join(pmc_seed %>% select(id, source), ., by="id")
 
-print(str_glue("Papers with missing abstract: {count(no_abstract)}"))
+num_missing <- count(no_abstract)
+num_total <- count(abstracts)
+prop_missing <- round((num_missing / num_total)*100, digits = 2)
+
+print(str_glue("Papers with missing abstract: {count(no_abstract)}"), 
+      str_glue("Proportion missing abstract: {prop_missing}%"))
 no_abstract %>% count(source)
+
+rm(num_missing, num_total, prop_missing)
 ```
 
-The following is a breakdown of records which:
+### Grab other abstracts
 
-* Are in the full seed set
-* Abstract was not retrieved
-* May be in the manually checked list
+This step will try to get the remaining abstracts by querying all sources. This step can also be used if more papers are added later, without retrieving all abstracts again. 
 
-This is much larger than the above number because many of them are records in the manually checked list and the seed set, but were not in the small subset.
+This would be a good step to include in the pipeline. *e.g.* pass an abstracts file optionally to this step of the script. If no abstracts, retrieve everything, otherwise just retrieve the missing ones. The list of sources could also be automated by looking at which sources are in the list of papers with missing abstracts.
 
-```{r seed_no_abstract}
-lost <- pmc_seed %>% 
-  select(id, source) %>% 
-  filter(id %in% unique(c(no_abstract$id, manual_checks$id)))
+```{r get missing, message=FALSE}
+for (id in no_abstract$id) {
+  for (data_source in c("agr", "pmc", "med")) {
+    details <- epmc_details(id, data_src = data_source)
+    
+    if (!is.null(details)) {
+      if ("basic" %in% names(details)) {
+        if ("abstractText" %in% colnames(details$basic)) {
+          abstract <- details$basic$abstractText
+          abstracts$abstract[abstracts$id == id] <- abstract
+          break
+        }
+      }
+    }
+  }
+}
 
-lost %>% count(source)
+rm(data_source, details, abstract, id)
 ```
 
-My results differ from Heidi's in that there are none with *NA* source. Those were records in the manually checked list, that were not in the seed set. They can be found below.
 
-```{r manually_checked_not_in_seed}
-manual_checks %>% select(id) %>% 
-  filter(!id %in% pmc_seed$id) %>% 
-  nrow()
+```{r, echo=FALSE}
+no_abstract <- abstracts %>% 
+  filter(is.na(abstract)) %>%
+  right_join(pmc_seed %>% select(id, source), ., by="id")
+
+num_missing <- count(no_abstract)
+num_total <- count(abstracts)
+prop_missing <- round((num_missing / num_total)*100, digits = 2)
+
+print(str_glue("Papers still missing abstract: {count(no_abstract)}"), 
+      str_glue("Proportion missing abstract: {prop_missing}%"))
+no_abstract %>% count(source)
+
+rm(num_missing, num_total, prop_missing, no_abstract)
 ```
 
-At this point, if I understand correctly, we are trying to at least retrieve the abstract for every record in the manually checked list. In this case, it would be best to not just take a small subset, but instead try to retrieve abstracts for all of the manual ones directly.
+Save the abstracts to a file so they don't have to be retrieved again.
+
+```{r save_abstracts, echo=FALSE}
+out_file <- "abstracts.csv"
+
+out_path <- file.path("..", "data", "raw", out_file)
+
+rm(out_file)
+
+write.csv(abstracts, out_path, row.names = FALSE)
+
+print(str_glue("Abstracts written to: {out_path}"))
+```
 
 ## 3. URL Cleaning
+
+### Read in the abstracts
+
+Read in the abstracts that have been already fetched.
+
+```{r read_abstracts, echo = FALSE}
+abstracts <- read.csv("../data/raw/abstracts.csv")
+```
 
 ### Initial Capture
 
@@ -144,7 +198,7 @@ url_pattern
 
 Extracting the raw matches, and unnesting for cases in which multiple URL's were found in an abstract.
 ```{r extract_urls}
-dev_urls <- dev_subset
+dev_urls <- abstracts
 
 dev_urls$url_match <- dev_urls$abstract %>% 
   str_extract_all(url_pattern)
@@ -196,6 +250,11 @@ dev_urls %>% select(clean_url)
 
 Remove URL's that have certain source names in them (case insensitive).
 
+We may want to add:
+
+* doi.org
+* gitlab
+
 ```{r remove_url_sources}
 false_sources <- c(
   "clinicaltrials",
@@ -214,3 +273,71 @@ rm(false_sources, combined_sources)
 
 dev_urls %>% select(clean_url)
 ```
+
+```{r save_urls, echo=FALSE}
+urls <- dev_urls %>% 
+  select(-abstract, -url_match)
+
+out_file <- "urls.csv"
+
+out_path <- file.path("..", "data", "processed", out_file)
+
+rm(out_file)
+
+write.csv(urls, out_path, row.names = FALSE)
+
+print(str_glue("URLs written to: {out_path}"))
+```
+
+
+## 4. URL Title Matching
+
+In this section, we will try to find matching strings between the title and the URL found in the abstract.
+
+```{r read_urls, echo=FALSE}
+urls <- read.csv("../data/processed/urls.csv")
+```
+
+First split the title into a list on whitespace, and only take unique elements
+
+```{r split_title}
+urls <- urls %>% 
+  rename(url = clean_url) %>% 
+  mutate(title_url_match = NA)
+
+urls$title_words <- urls$title %>%
+  str_replace_all("[:punct:]", " ") %>%
+  tolower() %>%
+  str_split(" +") %>% 
+  lapply(unique)
+
+```
+
+Next, split the URLs on punctuation, but first remove things like:
+
+* `https://`, `http://`, `https://www.`, `http://www.`
+* endings of `.com`, `.org`, and `.edu`
+
+```{r split_url}
+urls$url_words <- urls$url %>%
+  str_remove_all("^http(?:s://(?:www\\.)?|://(?:www\\.)?)") %>% 
+  str_remove_all("\\.(?:com|edu|org)$") %>% 
+  str_replace_all("[:punct:]", " ") %>%
+  tolower() %>%
+  str_split(" +") %>% 
+  lapply(unique)
+```
+
+Then find matching words from the split titles and URLs. Remove duplicate matches per ID.
+
+```{r find_matches}
+urls$title_url_match <- mapply(intersect, urls$title_words, urls$url_words)
+
+urls <- urls %>% 
+  unnest(cols = title_url_match) %>% 
+  distinct(title_url_match, id, .keep_all = TRUE) %>% 
+  select(-title_words, -url_words)
+
+urls %>% select(title_url_match)
+```
+
