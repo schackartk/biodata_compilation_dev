@@ -1,0 +1,92 @@
+---
+title: "Classification"
+output: html_notebook
+---
+
+# {.tabset}
+
+## Overview
+
+First, I will try rebuilding the classifier present in Heidi's "inventory" repository.
+
+```{r lsetup, echo =FALSE}
+library(dplyr)
+library(stringr)
+```
+
+
+## Initial Classifier
+
+First, import the manually classified set:
+
+```{r read_data}
+manual_checks <- read.csv("../data/processed/manual_checks_hji_2021-08-20.csv")
+```
+
+Next run the classification:
+
+`dplyr::case_when()` goes through the various conditions. Upon the first `TRUE` evaluation, the value is assigned. So earlier cases take precence.
+
+*Note:* Currently `db` is being classified as "db" not as database.
+
+```{r}
+manual_checks <- manual_checks %>%
+  mutate(
+    title = tolower(title),
+    title_cat = factor(title_cat),
+    title_class = case_when(
+      str_detect(title, "database") ~ "database",
+      str_detect(title, "data") ~ "data",
+      str_detect(title, "base\\b") ~ "base",
+      str_detect(title, "db") ~ "db",
+      str_detect(title, "bank") ~ "bank",
+      str_detect(title, "package") ~ "package",
+      str_detect(title, "tool") ~ "tool",
+      str_detect(title, "server") ~ "server",
+      str_detect(title, "study") ~ "study",
+      TRUE ~ "other"
+    ))
+```
+
+
+How many titles were given each classification?
+
+```{r total_classified}
+manual_checks %>%
+  group_by(title_class) %>% 
+  count()
+```
+
+Based on true classification, how many were correctly classified?
+
+* `count`: Number of observations given that classification manually
+* `n_correct`: Number observations correctly classified
+* `prop_correct`: Proportion of that category correctly classified
+
+```{r class_results}
+class_summary <- manual_checks %>% 
+  group_by(title_cat) %>% 
+  summarize(count = n()) %>% 
+  complete(title_cat, fill = list(count = 0))
+
+class_summary <- class_summary %>%
+  mutate(
+    manual_checks %>%
+      group_by(title_cat) %>%
+      mutate(correct_class = (title_cat == title_class)) %>%
+      filter(correct_class == TRUE) %>%
+      summarize(n_correct = n()) %>%
+      complete(title_cat, fill = list(n_correct = 0)) %>%
+      select(n_correct),
+    prop_correct = round(n_correct / count, 3)
+  )
+
+class_summary
+```
+
+Many of the classifications are pretty good. Notice though that there is not `database` included, because none of the manually checked items have that category
+
+```{r}
+any(manual_checks$title_cat == "database")
+```
+
