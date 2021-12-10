@@ -99,24 +99,10 @@ for (id in abstracts$id) {
 rm(details, abstract, id)
 ```
 
-For which papers were we not able to retrieve abstracts?
-
-*Note:* Abstract retrieval so far was only done using the default source (`"med"`).
-
 ```{r, echo=FALSE}
 no_abstract <- abstracts %>% 
   filter(is.na(abstract)) %>%
   right_join(pmc_seed %>% select(id, source), ., by="id")
-
-num_missing <- count(no_abstract)
-num_total <- count(abstracts)
-prop_missing <- round((num_missing / num_total)*100, digits = 2)
-
-print(str_glue("Papers with missing abstract: {count(no_abstract)}"), 
-      str_glue("Proportion missing abstract: {prop_missing}%"))
-no_abstract %>% count(source)
-
-rm(num_missing, num_total, prop_missing)
 ```
 
 ### Grab other abstracts
