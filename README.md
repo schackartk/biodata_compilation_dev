@@ -61,6 +61,14 @@ The pipeline can be run with:
 snakemake --cores 1 --configfile config/snake_config.yml
 ```
 
+## Testing
+
+There are tests for the parameterized R scripts. The full test suite can be run with:
+
+```
+make test
+```
+
 
 ## Authorship
 
