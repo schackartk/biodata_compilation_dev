@@ -47,6 +47,20 @@ Since this project utilizes renv, dependencies are tracked in the renv.lock file
 
 To keep the snapshot up-to-date, run `renv::snapshot()` after installing new packages. The status can be checked with `renv::status()`.
 
+## Snakemake
+
+To see what jobs need to be run, use the dry run argument:
+
+```
+snakemake -np --configfile config/snake_config.yml
+```
+
+The pipeline can be run with:
+
+```
+snakemake --cores 1 --configfile config/snake_config.yml
+```
+
 
 ## Authorship
 
