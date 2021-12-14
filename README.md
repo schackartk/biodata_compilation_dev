@@ -43,7 +43,7 @@ Here is a topographical map of the structure of this repository.
 
 ## renv
 
-Since this project utilizes renv, dependencies are tracked in the renv.lock file. They can be installed with `renv::restore`, or using the make target `make setup_renv`
+Since this project utilizes renv, dependencies are tracked in the renv.lock file. They can be installed with `renv::restore()`.
 
 To keep the snapshot up-to-date, run `renv::snapshot()` after installing new packages. The status can be checked with `renv::status()`.
 
